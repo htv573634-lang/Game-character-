@@ -7,79 +7,104 @@ import trimesh
 CONFIG_FILE = "test_game_character.yml"
 
 def load_config(path=CONFIG_FILE):
-    print("Current working directory:", os.getcwd())
     if not os.path.exists(path):
-        print(f"Error: {path} not found. Please create it first.")
+        print(f"Error: {path} not found.")
         sys.exit(1)
     with open(path, "r") as f:
         return yaml.safe_load(f)
 
+def inspect_downloaded_files(path):
+    """Recursively lists all files in the input directory."""
+    print(f"\n--- 📁 INSPECTING DIRECTORY: '{path}' ---")
+    if not os.path.exists(path):
+        print(f"      Directory '{path}' does not exist!")
+        return
+    for root, dirs, files in os.walk(path):
+        for name in files:
+            filepath = os.path.join(root, name)
+            size_kb = os.path.getsize(filepath) / 1024
+            print(f"      {filepath} ({size_kb:.2f} KB)")
+    print("-------------------------------------------\n")
+
+def inspect_3d_model(mesh_path):
+    """Loads the model and prints detailed structural and material info."""
+    print(f"--- 🔍 INSPECTING 3D MODEL: '{mesh_path}' ---")
+    try:
+        scene = trimesh.load(mesh_path, force='scene')
+        
+        print(f"Total Geometries (Meshes): {len(scene.geometry)}")
+        print(f"Total Scene Nodes: {len(scene.graph.nodes)}")
+        
+        for i, (name, geom) in enumerate(scene.geometry.items()):
+            print(f"\n  [Mesh {i+1}] Name: {name}")
+            print(f"    Vertices: {len(geom.vertices)}")
+            print(f"    Faces: {len(geom.faces)}")
+            
+            # Check Materials
+            if hasattr(geom.visual, 'material') and geom.visual.material is not None:
+                mat = geom.visual.material
+                print(f"    Material Type: {type(mat).__name__}")
+                
+                # Check for textures
+                has_texture = False
+                if hasattr(mat, 'baseColorTexture') and mat.baseColorTexture is not None:
+                    print(f"    ✅ Base Color Texture: FOUND")
+                    has_texture = True
+                if hasattr(mat, 'image') and mat.image is not None:
+                    print(f"    ✅ Image Data: FOUND")
+                    has_texture = True
+                
+                if not has_texture:
+                    print(f"    ❌ Base Color Texture: MISSING (This causes black rendering!)")
+                    print(f"    Material Base Color Factor: {getattr(mat, 'baseColorFactor', 'N/A')}")
+            else:
+                print(f"    ❌ Material: NONE (Defaulting to black)")
+                
+            # Check for rigging/skinning
+            if hasattr(geom, 'vertex_definitions') and geom.vertex_definitions is not None:
+                print(f"    ✅ Rigging/Skinning Data: FOUND")
+            else:
+                print(f"    ⚠️ Rigging/Skinning Data: NOT DETECTED by trimesh")
+                
+    except Exception as e:
+        print(f"    Error inspecting model: {e}")
+    print("-------------------------------------------\n")
+
 def run_pipeline(config):
     char = config["pipeline"]
     body = config["body_dimensions"]
-    settings = config["blender_settings"]
 
     print("=" * 50)
     print(" GAME CHARACTER PIPELINE - TEST RUN ")
     print("=" * 50)
     print(f"Character  : {char['character_name']}")
     print(f"Game       : {char['game']}")
-    print(f"Dimensions : Height {body['height_cm']}cm | Waist {body['waist_cm']}cm | Hips {body['hips_cm']}cm")
     print("-" * 50)
 
-    # Step 1: Check inputs
-    print(f"[1/3] Checking input assets...")
-    print(f"      Body Model : {char['input_obj']}")
-    if 'clothing_obj' in char:
-        print(f"      Clothing   : {char['clothing_obj']}")
-    else:
-        print(f"      Clothing   : (None provided)")
+    # Step 1: Inspect downloaded files
+    inspect_downloaded_files("input/")
+    if not os.path.exists(char['input_obj']):
+        print(f"❌ Error: The file '{char['input_obj']}' was NOT found in the input folder.")
+        print("Check the directory inspection above to see exactly what was downloaded.")
+        sys.exit(1)
 
-    # Step 2: Load or Generate Mesh
-    print(f"\n[2/3] Processing 3D Model...")
+    # Step 2: Inspect the 3D model itself
+    inspect_3d_model(char['input_obj'])
 
-    if os.path.exists(char['input_obj']):
-        print(f"      Found real character model! Loading...")
-        try:
-            character_mesh = trimesh.load(char['input_obj'], force='scene')
-            
-            # Check for clothing
-            if 'clothing_obj' in char and os.path.exists(char['clothing_obj']):
-                print(f"      Found clothing model! Loading and combining...")
-                clothing_mesh = trimesh.load(char['clothing_obj'], force='scene')
-                final_scene = trimesh.Scene([character_mesh, clothing_mesh])
-            else:
-                print(f"      [!] No clothing model found. Exporting character only.")
-                final_scene = character_mesh
-                
-        except Exception as e:
-            print(f"      [!] Error loading model: {e}")
-            print(f"      Falling back to placeholder box...")
-            height_m = body["height_cm"] / 100.0
-            width_m = body["shoulders_cm"] / 100.0
-            depth_m = body["waist_cm"] / 100.0
-            placeholder_mesh = trimesh.creation.box(extents=[width_m, depth_m, height_m])
-            final_scene = trimesh.Scene([placeholder_mesh])
-            
-    else:
-        print(f"      [!] Real character model not found at '{char['input_obj']}'.")
-        print(f"      Creating placeholder box instead...")
-        height_m = body["height_cm"] / 100.0
-        width_m = body["shoulders_cm"] / 100.0
-        depth_m = body["waist_cm"] / 100.0
-        placeholder_mesh = trimesh.creation.box(extents=[width_m, depth_m, height_m])
-        final_scene = trimesh.Scene([placeholder_mesh])
-        print(f"      Created placeholder mesh: {width_m}m x {depth_m}m x {height_m}m")
-
-    # Step 3: Export as GLB
-    print(f"\n[3/3] Exporting final model to GLB...")
-    os.makedirs(os.path.dirname(char['output_glb']), exist_ok=True)
-
-    final_scene.export(char['output_glb'], file_type='glb')
-    print(f"      Saved GLB to: {char['output_glb']}")
+    # Step 3: Process and Export
+    print(f"[3/3] Exporting final model to GLB...")
+    try:
+        final_scene = trimesh.load(char['input_obj'], force='scene')
+        os.makedirs(os.path.dirname(char['output_glb']), exist_ok=True)
+        final_scene.export(char['output_glb'], file_type='glb')
+        print(f"      Saved GLB to: {char['output_glb']}")
+        print("\n💡 NOTE: If the log says 'Base Color Texture: MISSING', the black model is due to broken texture links.")
+        print("   We will need to update the script to pack the textures manually.")
+    except Exception as e:
+        print(f"❌ Export failed: {e}")
 
     print("\n" + "=" * 50)
-    print("Pipeline test completed successfully!")
+    print("Pipeline test completed!")
     print("=" * 50)
 
 if __name__ == "__main__":
