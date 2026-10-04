@@ -29,40 +29,57 @@ def run_pipeline(config):
 
     # Step 1: Check inputs
     print(f"[1/3] Checking input assets...")
-    print(f"      Body FBX : {char['input_fbx']}")
-    print(f"      Clothing : {char['clothing_obj']}")
-    if not os.path.exists(char['input_fbx']):
-        print(f"      [!] Warning: {char['input_fbx']} not found. (Expected in a real setup)")
-    if not os.path.exists(char['clothing_obj']):
-        print(f"      [!] Warning: {char['clothing_obj']} not found. (Expected in a real setup)")
+    print(f"      Body Model : {char['input_obj']}")
+    if 'clothing_obj' in char:
+        print(f"      Clothing   : {char['clothing_obj']}")
+    else:
+        print(f"      Clothing   : (None provided)")
 
-    # Step 2: Generate Placeholder Mesh (Instead of Blender)
-    print(f"\n[2/3] Generating placeholder mesh using Python (No Blender)...")
-    print(f"      Applying Shrinkwrap Modifier (Offset: {settings['shrinkwrap_offset']}m)")
-    print(f"      Transferring Skin Weights: {settings['transfer_weights']}")
-    
-    # Create a simple box scaled to the character's dimensions (height, shoulders, waist)
-    # Convert cm to meters for 3D space
-    height_m = body["height_cm"] / 100.0
-    width_m = body["shoulders_cm"] / 100.0
-    depth_m = body["waist_cm"] / 100.0
-    
-    # Create a placeholder humanoid shape (a simple capsule or box)
-    # We use a box for simplicity, scaled to the character's proportions
-    placeholder_mesh = trimesh.creation.box(extents=[width_m, depth_m, height_m])
-    print(f"      Created placeholder mesh: {width_m}m x {depth_m}m x {height_m}m")
+    # Step 2: Load or Generate Mesh
+    print(f"\n[2/3] Processing 3D Model...")
+
+    if os.path.exists(char['input_obj']):
+        print(f"      Found real character model! Loading...")
+        try:
+            character_mesh = trimesh.load(char['input_obj'], force='scene')
+            
+            # Check for clothing
+            if 'clothing_obj' in char and os.path.exists(char['clothing_obj']):
+                print(f"      Found clothing model! Loading and combining...")
+                clothing_mesh = trimesh.load(char['clothing_obj'], force='scene')
+                final_scene = trimesh.Scene([character_mesh, clothing_mesh])
+            else:
+                print(f"      [!] No clothing model found. Exporting character only.")
+                final_scene = character_mesh
+                
+        except Exception as e:
+            print(f"      [!] Error loading model: {e}")
+            print(f"      Falling back to placeholder box...")
+            height_m = body["height_cm"] / 100.0
+            width_m = body["shoulders_cm"] / 100.0
+            depth_m = body["waist_cm"] / 100.0
+            placeholder_mesh = trimesh.creation.box(extents=[width_m, depth_m, height_m])
+            final_scene = trimesh.Scene([placeholder_mesh])
+            
+    else:
+        print(f"      [!] Real character model not found at '{char['input_obj']}'.")
+        print(f"      Creating placeholder box instead...")
+        height_m = body["height_cm"] / 100.0
+        width_m = body["shoulders_cm"] / 100.0
+        depth_m = body["waist_cm"] / 100.0
+        placeholder_mesh = trimesh.creation.box(extents=[width_m, depth_m, height_m])
+        final_scene = trimesh.Scene([placeholder_mesh])
+        print(f"      Created placeholder mesh: {width_m}m x {depth_m}m x {height_m}m")
 
     # Step 3: Export as GLB
     print(f"\n[3/3] Exporting final model to GLB...")
     os.makedirs(os.path.dirname(char['output_glb']), exist_ok=True)
-    
-    # Export the mesh to GLB format
-    placeholder_mesh.export(char['output_glb'], file_type='glb')
+
+    final_scene.export(char['output_glb'], file_type='glb')
     print(f"      Saved GLB to: {char['output_glb']}")
 
     print("\n" + "=" * 50)
     print("Pipeline test completed successfully!")
-    print("A placeholder .glb file has been generated without Blender.")
     print("=" * 50)
 
 if __name__ == "__main__":
