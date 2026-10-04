@@ -18,7 +18,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install pyyaml trimesh numpy requests
+        run: pip install pyyaml trimesh numpy requests pygltflib
 
       - name: Download Sketchfab Model
         env:
@@ -27,12 +27,11 @@ jobs:
           python -c "
           import os, requests, zipfile
           token = os.environ['SKETCHFAB_API_TOKEN']
-          uid = 'afa901030a054533bcd7bcd3fa974f4d'  # UID for 'Jeny Tpose Riged'
+          uid = 'afa901030a054533bcd7bcd3fa974f4d'
           headers = {'Authorization': f'Token {token}'}
           resp = requests.get(f'https://api.sketchfab.com/v3/models/{uid}/download', headers=headers)
           resp.raise_for_status()
-          data = resp.json()
-          dl_url = data['gltf']['url']
+          dl_url = resp.json()['gltf']['url']
           r = requests.get(dl_url)
           with open('model.zip', 'wb') as f:
               f.write(r.content)
