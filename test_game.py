@@ -3,6 +3,7 @@ import yaml
 import os
 import sys
 import trimesh
+import pygltflib
 
 CONFIG_FILE = "test_game_character.yml"
 
@@ -13,25 +14,11 @@ def load_config(path=CONFIG_FILE):
     with open(path, "r") as f:
         return yaml.safe_load(f)
 
-def inspect_downloaded_files(path):
-    """Recursively lists all files in the input directory."""
-    print(f"\n--- 📁 INSPECTING DIRECTORY: '{path}' ---")
-    if not os.path.exists(path):
-        print(f"      Directory '{path}' does not exist!")
-        return
-    for root, dirs, files in os.walk(path):
-        for name in files:
-            filepath = os.path.join(root, name)
-            size_kb = os.path.getsize(filepath) / 1024
-            print(f"      {filepath} ({size_kb:.2f} KB)")
-    print("-------------------------------------------\n")
-
 def inspect_3d_model(mesh_path):
     """Loads the model and prints detailed structural and material info."""
     print(f"--- 🔍 INSPECTING 3D MODEL: '{mesh_path}' ---")
     try:
         scene = trimesh.load(mesh_path, force='scene')
-        
         print(f"Total Geometries (Meshes): {len(scene.geometry)}")
         print(f"Total Scene Nodes: {len(scene.graph.nodes)}")
         
@@ -40,40 +27,64 @@ def inspect_3d_model(mesh_path):
             print(f"    Vertices: {len(geom.vertices)}")
             print(f"    Faces: {len(geom.faces)}")
             
-            # Check Materials
             if hasattr(geom.visual, 'material') and geom.visual.material is not None:
                 mat = geom.visual.material
                 print(f"    Material Type: {type(mat).__name__}")
-                
-                # Check for textures
                 has_texture = False
                 if hasattr(mat, 'baseColorTexture') and mat.baseColorTexture is not None:
                     print(f"    ✅ Base Color Texture: FOUND")
                     has_texture = True
-                if hasattr(mat, 'image') and mat.image is not None:
-                    print(f"    ✅ Image Data: FOUND")
-                    has_texture = True
-                
                 if not has_texture:
                     print(f"    ❌ Base Color Texture: MISSING (This causes black rendering!)")
-                    print(f"    Material Base Color Factor: {getattr(mat, 'baseColorFactor', 'N/A')}")
             else:
                 print(f"    ❌ Material: NONE (Defaulting to black)")
-                
-            # Check for rigging/skinning
-            if hasattr(geom, 'vertex_definitions') and geom.vertex_definitions is not None:
-                print(f"    ✅ Rigging/Skinning Data: FOUND")
-            else:
-                print(f"    ⚠️ Rigging/Skinning Data: NOT DETECTED by trimesh")
-                
     except Exception as e:
         print(f"    Error inspecting model: {e}")
     print("-------------------------------------------\n")
 
+def pack_gltf_to_glb(gltf_path, output_path):
+    """Packs external textures and binary buffers into a single GLB file."""
+    print(f"\n[3/3] Packing GLTF to GLB with textures...")
+    try:
+        gltf = pygltflib.GLTF2().load(gltf_path)
+        
+        # 1. Pack binary buffer (.bin)
+        if gltf.buffers and gltf.buffers[0].uri:
+            buffer_path = os.path.join(os.path.dirname(gltf_path), gltf.buffers[0].uri)
+            if os.path.exists(buffer_path):
+                with open(buffer_path, 'rb') as f:
+                    gltf.buffers[0].data = f.read()
+                gltf.buffers[0].uri = None
+                print("      ✅ Embedded binary buffer (.bin)")
+            else:
+                print(f"      [!] Warning: Buffer file not found: {buffer_path}")
+
+        # 2. Pack external images (.png)
+        if gltf.images:
+            for i, img in enumerate(gltf.images):
+                if img.uri:
+                    img_path = os.path.join(os.path.dirname(gltf_path), img.uri)
+                    if os.path.exists(img_path):
+                        with open(img_path, 'rb') as f:
+                            img.data = f.read()
+                        img.uri = None
+                        print(f"      ✅ Embedded image {i+1}: {img.uri}")
+                    else:
+                        print(f"      [!] Warning: Image file not found: {img_path}")
+
+        # 3. Save as GLB
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        gltf.save_binary(output_path)
+        print(f"      ✅ Saved packed GLB to: {output_path}")
+        
+    except Exception as e:
+        print(f"      ❌ Error packing GLTF: {e}")
+        import traceback
+        traceback.print_exc()
+
 def run_pipeline(config):
     char = config["pipeline"]
-    body = config["body_dimensions"]
-
+    
     print("=" * 50)
     print(" GAME CHARACTER PIPELINE - TEST RUN ")
     print("=" * 50)
@@ -82,26 +93,15 @@ def run_pipeline(config):
     print("-" * 50)
 
     # Step 1: Inspect downloaded files
-    inspect_downloaded_files("input/")
     if not os.path.exists(char['input_obj']):
-        print(f"❌ Error: The file '{char['input_obj']}' was NOT found in the input folder.")
-        print("Check the directory inspection above to see exactly what was downloaded.")
+        print(f"❌ Error: The file '{char['input_obj']}' was NOT found.")
         sys.exit(1)
 
     # Step 2: Inspect the 3D model itself
     inspect_3d_model(char['input_obj'])
 
-    # Step 3: Process and Export
-    print(f"[3/3] Exporting final model to GLB...")
-    try:
-        final_scene = trimesh.load(char['input_obj'], force='scene')
-        os.makedirs(os.path.dirname(char['output_glb']), exist_ok=True)
-        final_scene.export(char['output_glb'], file_type='glb')
-        print(f"      Saved GLB to: {char['output_glb']}")
-        print("\n💡 NOTE: If the log says 'Base Color Texture: MISSING', the black model is due to broken texture links.")
-        print("   We will need to update the script to pack the textures manually.")
-    except Exception as e:
-        print(f"❌ Export failed: {e}")
+    # Step 3: Pack and Export
+    pack_gltf_to_glb(char['input_obj'], char['output_glb'])
 
     print("\n" + "=" * 50)
     print("Pipeline test completed!")
