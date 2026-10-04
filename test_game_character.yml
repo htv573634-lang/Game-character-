@@ -1,7 +1,7 @@
 pipeline:
-  character_name: "Chloe Frazer"
-  game: "Uncharted: The Lost Legacy"
-  input_fbx: "input/chloe_frazer.fbx"
+  character_name: "Jeny"
+  game: "Sketchfab"
+  input_obj: "input/scene.gltf"
   clothing_obj: "input/custom_shirt.obj"
   output_glb: "output/fitted_character.glb"
 
