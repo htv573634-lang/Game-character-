@@ -1,0 +1,16 @@
+pipeline:
+  character_name: "Chloe Frazer"
+  game: "Uncharted: The Lost Legacy"
+  input_fbx: "input/chloe_frazer.fbx"
+  clothing_obj: "input/custom_shirt.obj"
+  output_glb: "output/fitted_character.glb"
+
+body_dimensions:
+  height_cm: 170
+  shoulders_cm: 42
+  waist_cm: 68
+  hips_cm: 95
+
+blender_settings:
+  shrinkwrap_offset: 0.01
+  transfer_weights: true
