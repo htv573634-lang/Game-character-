@@ -18,7 +18,13 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install pyyaml trimesh numpy
 
       - name: Run test_game.py
         run: python test_game.py
+
+      - name: Upload GLB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fitted-character-glb
+          path: output/fitted_character.glb
